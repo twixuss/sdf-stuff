@@ -1,0 +1,12 @@
+.vs/
+tmp/
+temp/
+bin/
+bin-Debug/
+bin-Release/
+sdf.bin
+chunk.obj
+diff.cpp
+randmesh.h
+randmesh.obj
+big_int.h
