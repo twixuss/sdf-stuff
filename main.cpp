@@ -23,8 +23,8 @@ using String = Span<utf8>;
 gl::Functions gl_functions;
 gl::Functions *tl_opengl_functions() { return &gl_functions; };
 
-//#define ASSERTION_FAILURE(...) 0
-//#define assert(...)
+#define ASSERTION_FAILURE(...) 0
+#define assert(...)
 
 template <class T>
 using GList = List<T, DefaultAllocator>;
@@ -395,7 +395,7 @@ void sdf_to_triangles_sse(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, S
 			at(index_grid.data, lx & 1, ly, lz) = vertices.count;
 			Vertex *vertex = &vertices.data[vertices.count++];
 
-			#if 0
+			#if 1
 
 			////////////////
 			// HORIZONTAL //
@@ -512,6 +512,7 @@ void sdf_to_triangles_sse(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, S
 			__m128 d653x = _mm_shuffle_ps(d3210, d7654, _MM_SHUFFLE(2,1,3,0));
 			__m128 d777x = _mm_shuffle_ps(d7654, d7654, _MM_SHUFFLE(3,3,3,0));
 
+			// TODO: normal looks different from reference
 			__m128 normal = _mm_add_ps(_mm_add_ps(_mm_sub_ps(d000x, d124x),
 			                                      _mm_sub_ps(d211x, d225x)),
 			                           _mm_add_ps(_mm_sub_ps(d442x, d566x), 
@@ -597,117 +598,6 @@ void sdf_to_triangles_sse(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, S
 	}
 	}
 
-	#if 0
-	// premultiplied offsets:
-	//     1.35 gb/s
-	for (umm lx = sizeyz; lx < (size.x-1)*sizeyz; lx += sizeyz) {
-		#if EXPANDABLE
-		// Expand if don't have full layer ahead.
-		indices.reserve_exponential(indices.count + sizeyz * 18);
-		#endif
-	for (umm ly = size.z; ly < sizeyz-size.z; ly += size.z) {
-	for (umm lz = 1; lz < size.z-1; ++lz) {
-		umm i = lx + ly + lz;
-		
-		// Keep both skips by surface and by negative bitfields, they both skip a lot
-
-
-		// 2.1 gb/s
-		u64 s = *(s64 *)&surface_bitfield[(lx*size.y*size.z + ly*size.z + lz) / 8] >> (lz%8);
-		if (s + 1 < 2) {
-			lz += 55;
-			continue;
-		}
-
-
-		u64 r = 
-			(((*(u64*)&negative_bitfield.data[(i + 0*sizeyz + 0*size.z)/8] >> (lz%8)) & 0xffff) << 0) |
-			(((*(u64*)&negative_bitfield.data[(i + 0*sizeyz + 1*size.z)/8] >> (lz%8)) & 0xffff) << 16) |
-			(((*(u64*)&negative_bitfield.data[(i + 1*sizeyz + 0*size.z)/8] >> (lz%8)) & 0xffff) << 32) |
-			(((*(u64*)&negative_bitfield.data[(i + 1*sizeyz + 1*size.z)/8] >> (lz%8)) & 0xffff) << 48);
-			
-		// 7 6 5 4 3 2 1 0
-		// f e d c b a 9 8
-		// n m l k j i h g
-		// v u t s r q p o
-
-		// 1.3 gb/s
-		if (r + 1 < 2) {
-			lz += 14;
-			continue;
-		}
-
-		auto quad = [&](umm _0, umm _1, umm _2, umm _3) {
-			auto i0 = index_grid.data[_0];
-			auto i1 = index_grid.data[_1];
-			auto i2 = index_grid.data[_2];
-			auto i3 = index_grid.data[_3];
-			
-			assert(i0 < vertices.count);
-			assert(i1 < vertices.count);
-			assert(i2 < vertices.count);
-			assert(i3 < vertices.count);
-				
-			indices.data[indices_count++] = i0;
-			indices.data[indices_count++] = i1;
-			indices.data[indices_count++] = i2;
-			indices.data[indices_count++] = i1;
-			indices.data[indices_count++] = i3;
-			indices.data[indices_count++] = i2;
-		};
-		
-		// 1.8 gb/s
-		bool s0 = *(u32 *)&sdf.data[lx+0*sizeyz + ly+0*size.z + (lz+0)] >> 31;
-		bool s1 = *(u32 *)&sdf.data[lx+1*sizeyz + ly+0*size.z + (lz+0)] >> 31;
-		bool s2 = *(u32 *)&sdf.data[lx+0*sizeyz + ly+1*size.z + (lz+0)] >> 31;
-		bool s3 = *(u32 *)&sdf.data[lx+0*sizeyz + ly+0*size.z + (lz+1)] >> 31;
-		
-		// 1.8 gb/s
-		//bool s0 = (negative_bitfield.data[(lx+0*sizeyz + ly+0*size.z + lz+0)/8] >> ((lz+0)%8)) & 1;
-		//bool s1 = (negative_bitfield.data[(lx+1*sizeyz + ly+0*size.z + lz+0)/8] >> ((lz+0)%8)) & 1;
-		//bool s2 = (negative_bitfield.data[(lx+0*sizeyz + ly+1*size.z + lz+0)/8] >> ((lz+0)%8)) & 1;
-		//bool s3 = (negative_bitfield.data[(lx+0*sizeyz + ly+0*size.z + lz+1)/8] >> ((lz+1)%8)) & 1;
-
-		// 1.7 gb/s
-		//bool s0 = negative_bitfield.data[(lx+0*sizeyz + ly+0*size.z + lz+0)/8] & (1 << ((lz+0)%8));
-		//bool s1 = negative_bitfield.data[(lx+1*sizeyz + ly+0*size.z + lz+0)/8] & (1 << ((lz+0)%8));
-		//bool s2 = negative_bitfield.data[(lx+0*sizeyz + ly+1*size.z + lz+0)/8] & (1 << ((lz+0)%8));
-		//bool s3 = negative_bitfield.data[(lx+0*sizeyz + ly+0*size.z + lz+1)/8] & (1 << ((lz+1)%8));
-
-		// BROKEN mb/s
-		//bool s0 = _bittest((long *)&negative_bitfield.data[((lx+0)*sizeyz + (ly+0)*size.z + (lz+0))/8], ((lz+0)%8));
-		//bool s1 = _bittest((long *)&negative_bitfield.data[((lx+1)*sizeyz + (ly+0)*size.z + (lz+0))/8], ((lz+0)%8));
-		//bool s2 = _bittest((long *)&negative_bitfield.data[((lx+0)*sizeyz + (ly+1)*size.z + (lz+0))/8], ((lz+0)%8));
-		//bool s3 = _bittest((long *)&negative_bitfield.data[((lx+0)*sizeyz + (ly+0)*size.z + (lz+1))/8], ((lz+1)%8));
-		if (s0 != s1) {
-			umm _0 = i - s1*size.z - s1;
-			umm _1 = i +  0*size.z - 1;
-			umm _2 = i -  1*size.z + 0;
-			umm _3 = i - s0*size.z - s0;
-
-			quad(_0, _1, _2, _3);
-		}
-		if (s0 != s2) {
-			umm _0 = i - s0*sizeyz - s0;
-			umm _1 = i +  0*sizeyz - 1;
-			umm _2 = i -  1*sizeyz + 0;
-			umm _3 = i - s2*sizeyz - s2;
-
-			quad(_0, _1, _2, _3);
-		}
-		if (s0 != s3) {
-			umm _0 = i - s3*sizeyz - s3*size.z;
-			umm _1 = i +  0*sizeyz -  1*size.z;
-			umm _2 = i -  1*sizeyz +  0*size.z;
-			umm _3 = i - s0*sizeyz - s0*size.z;
-
-			quad(_0, _1, _2, _3);
-		}
-	}
-	}
-	}
-	#endif
-
 	indices.count = indices_count;
 }
 
@@ -773,18 +663,12 @@ struct {
 	u8 surface_bitfield[N*N*N/8];
 } sdf;
 
-void write_sdf_to_file() {
+void update_sdf_auxiliary_fields() {
 	memset(sdf.negative_bitfield, 0, sizeof(sdf.negative_bitfield));
 	memset(sdf.surface_bitfield, 0, sizeof(sdf.surface_bitfield));
 	for (int x = 0; x < N; ++x) {
 	for (int y = 0; y < N; ++y) {
 	for (int z = 0; z < N; ++z) {
-		//sdf[x][y][z] = gradient_noise_s16({x,y,z}, 8) - 0.5 - (sinf(y * tau / 32.0f)) * 0.25f;
-		//sdf[x][y][z] = value_noise_smooth<f32>(V3f(x,y,z) / 8) - 0.5 - (y - N/2) / 32.0f;
-
-		v3f p = V3f(x,y,z) - N/2;
-
-		sdf.sdf[x][y][z] = (gradient_noise({x,y,z}, 8) - 0.5) * 32 - (length(p) - N / 3);
 		sdf.negative_bitfield[(x*N*N + y*N + z)/8] |= (*(u32 *)&sdf.sdf[x][y][z] >> 31) << (z % 8);
 	}
 	}
@@ -805,6 +689,23 @@ void write_sdf_to_file() {
 	}
 	}
 	}
+}
+
+void write_sdf_to_file() {
+	for (int x = 0; x < N; ++x) {
+	for (int y = 0; y < N; ++y) {
+	for (int z = 0; z < N; ++z) {
+		//sdf[x][y][z] = gradient_noise_s16({x,y,z}, 8) - 0.5 - (sinf(y * tau / 32.0f)) * 0.25f;
+		//sdf[x][y][z] = value_noise_smooth<f32>(V3f(x,y,z) / 8) - 0.5 - (y - N/2) / 32.0f;
+
+		v3f p = V3f(x,y,z) - N/2;
+
+		sdf.sdf[x][y][z] = clamp((gradient_noise({x,y,z}, 8) - 0.5f) * 32 - (length(p) - N / 3), -1.0f, 1.0f);
+		//sdf.sdf[x][y][z] = roundf(map(sdf.sdf[x][y][z], -1.f, 1.f, -1.f, 254.f));
+	}
+	}
+	}
+	update_sdf_auxiliary_fields();
 
 	write_entire_file(u8"sdf.bin"s, value_as_bytes(sdf));
 }
@@ -908,24 +809,32 @@ struct GpuMesh {
 };
 
 GpuMesh create_gpu_mesh(Span<Vertex> vertices, Span<u32> indices) {
-	GpuMesh result = {};
+	GpuMesh mesh = {};
 	
-	glCreateBuffers(1, &result.vb);
-	glNamedBufferStorage(result.vb, sizeof(vertices[0]) * vertices.count, vertices.data, 0);
+	glCreateBuffers(1, &mesh.vb);
+	glNamedBufferData(mesh.vb, sizeof(vertices[0]) * vertices.count, vertices.data, GL_STATIC_DRAW);
 
-	glCreateBuffers(1, &result.ib);
-	glNamedBufferStorage(result.ib, sizeof(indices[0]) * indices.count, indices.data, 0);
+	glCreateBuffers(1, &mesh.ib);
+	glNamedBufferData(mesh.ib, sizeof(indices[0]) * indices.count, indices.data, GL_STATIC_DRAW);
 
-	glCreateVertexArrays(1, &result.va);
-	glVertexArrayVertexBuffer(result.va, 0, result.vb, 0, sizeof(Vertex));
-	glVertexArrayElementBuffer(result.va, result.ib);
-	glEnableVertexArrayAttrib(result.va, 0); glVertexArrayAttribBinding(result.va, 0, 0); glVertexArrayAttribFormat(result.va, 0, 3, GL_FLOAT, false, offsetof(Vertex, position));
-	glEnableVertexArrayAttrib(result.va, 1); glVertexArrayAttribBinding(result.va, 1, 0); glVertexArrayAttribFormat(result.va, 1, 3, GL_FLOAT, false, offsetof(Vertex, normal));
+	glCreateVertexArrays(1, &mesh.va);
+	glVertexArrayVertexBuffer(mesh.va, 0, mesh.vb, 0, sizeof(Vertex));
+	glVertexArrayElementBuffer(mesh.va, mesh.ib);
+	glEnableVertexArrayAttrib(mesh.va, 0); glVertexArrayAttribBinding(mesh.va, 0, 0); glVertexArrayAttribFormat(mesh.va, 0, 3, GL_FLOAT, false, offsetof(Vertex, position));
+	glEnableVertexArrayAttrib(mesh.va, 1); glVertexArrayAttribBinding(mesh.va, 1, 0); glVertexArrayAttribFormat(mesh.va, 1, 3, GL_FLOAT, false, offsetof(Vertex, normal));
 
-	result.vertex_count = vertices.count;
-	result.index_count = indices.count;
+	mesh.vertex_count = vertices.count;
+	mesh.index_count = indices.count;
 
-	return result;
+	return mesh;
+}
+
+void update_gpu_mesh(GpuMesh &mesh, Span<Vertex> vertices, Span<u32> indices) {
+	glNamedBufferData(mesh.vb, sizeof(vertices[0]) * vertices.count, vertices.data, GL_STATIC_DRAW);
+	glNamedBufferData(mesh.ib, sizeof(indices[0]) * indices.count, indices.data, GL_STATIC_DRAW);
+
+	mesh.vertex_count = vertices.count;
+	mesh.index_count = indices.count;
 }
 
 struct Program {
@@ -1078,14 +987,50 @@ s32 tl_main(Span<String> args) {
 			ImGui::SameLine();
 
 			auto time = time_sum / time_sum_div;
-			ImGui::Text("%s", tformat("avg: {}ms ({}/s) | min: {}ms ({}/s)\0"s, time * 1000, format_bytes(sizeof(sdf) / time), time_min * 1000, format_bytes(sizeof(sdf) / time_min)).data);
+			ImGui::Text("%s", tformat("avg: {}ms ({}/s) | best: {}ms ({}/s)\0"s, time * 1000, format_bytes(sizeof(sdf) / time), time_min * 1000, format_bytes(sizeof(sdf) / time_min)).data);
 		};
 
+		static bool enable_wireframe = false;
+
 		if (ImGui::Begin("Window")) {
+			ImGui::Checkbox("Wireframe", &enable_wireframe);
+			if (ImGui::Button("Remesh Starting")) {
+				update_sdf_auxiliary_fields();
+				sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);
+				update_gpu_mesh(mesh, vertices, indices);
+			}
+			if (ImGui::Button("Remesh SSE")) {
+				update_sdf_auxiliary_fields();
+				sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+				update_gpu_mesh(mesh, vertices, indices);
+			}
+
 			bench.operator()<0>("Starting bench", [&]{sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);});
 			bench.operator()<1>("SSE bench"   , [&]{sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
 			bench.operator()<2>("H bench"     , [&]{bench_h();});
 			bench.operator()<3>("V bench"     , [&]{bench_v();});
+		}
+		ImGui::End();
+		
+		enum class Brush {
+			smooth,
+			sphere,
+		};
+		static Brush brush;
+		static float brush_radius = 5;
+		
+		if (ImGui::Begin("Tools")) {
+			
+			if (ImGui::Button("Smooth")) brush = Brush::smooth;
+			ImGui::SameLine();
+			if (ImGui::Button("Sphere")) brush = Brush::sphere;
+
+			ImGui::SliderFloat("Radius", &brush_radius, 1, 32, "%.3f", ImGuiSliderFlags_Logarithmic);
+
+			ImGui::TextUnformatted("Keys:");
+			ImGui::TextUnformatted(" Shift - faster");
+			ImGui::TextUnformatted(" Alt   - slower");
+			ImGui::TextUnformatted(" Ctrl  - invert");
 		}
 		ImGui::End();
 
@@ -1094,15 +1039,113 @@ s32 tl_main(Span<String> args) {
 		// 
 		// Update state
 		//
+		
+		m4 world_to_ndc = m4::perspective_right_handed((f32)screen_size.x / screen_size.y, pi/2, 0.01f, 1000.0f) * m4::rotation_r_yxz(camera_angles) * m4::translation(-camera_position);
+		m4 ndc_to_world = inverse(world_to_ndc);
 
 		static ImVec2 prev_mouse_position;
 		ImVec2 mouse_position = ImGui::GetMousePos();
 		ImVec2 mouse_delta = {mouse_position.x - prev_mouse_position.x, mouse_position.y - prev_mouse_position.y};
 		prev_mouse_position = mouse_position;
 
-		if (ImGui::IsMouseDragging(ImGuiMouseButton_Right) && !ImGui::GetIO().WantCaptureMouse) {
-			camera_angles.x += mouse_delta.y * 0.003f;
-			camera_angles.y += mouse_delta.x * 0.003f;
+		auto raycast_world = [&] {
+			v2f cursor_pos = std::bit_cast<v2f>(ImGui::GetMousePos());
+			v2f cursor_ndc = map<v2f,v2f>(cursor_pos, {}, (v2f)screen_size, {-1,1}, {1,-1});
+			v4f cursor_wpos4 = ndc_to_world * V4f(cursor_ndc,0,1);
+			v3f cursor_dir = normalize(cursor_wpos4.xyz / cursor_wpos4.w - camera_position);
+			ray<v3f> cursor_ray = {
+				camera_position,
+				cursor_dir,
+			};
+
+			println("dir {}", cursor_ray.direction);
+
+			Optional<RaycastHit<v3f>> hit = {};
+
+			for (umm i = 0; i < indices.count; i += 3) {
+				auto a = vertices[indices[i+0]].position;
+				auto b = vertices[indices[i+1]].position;
+				auto c = vertices[indices[i+2]].position;
+				hit = min(hit, raycast(cursor_ray, triangle<v3f>{a,b,c}));
+			}
+
+			return hit;
+		};
+
+		if (!ImGui::GetIO().WantCaptureMouse) {
+			if (ImGui::IsKeyDown(ImGuiKey_MouseRight)) {
+				camera_angles.x += mouse_delta.y * 0.003f;
+				camera_angles.y += mouse_delta.x * 0.003f;
+			}
+		
+			f32 force = 15;
+			if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) force *= 10;
+			if (ImGui::IsKeyDown(ImGuiKey_LeftAlt)) force /= 10;
+			if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) force *= -1;
+			
+			int R = ceilf(brush_radius);
+
+			switch (brush) {
+				case Brush::smooth: {
+					if (ImGui::IsKeyDown(ImGuiKey_MouseLeft)) {
+						auto hit = raycast_world();
+						if (hit) {
+							REDECLARE_VAL(hit, hit.value());
+
+							auto hit_position_int = (v3s)floor(hit.position);
+
+							for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
+							for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
+							for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+								v3s p = {x,y,z};
+								sdf.sdf[p.x][p.y][p.z] -= frame_time * force * map_clamped<f32,f32>(distance((v3f)p, hit.position), 0, brush_radius, 1, 0);
+							}
+							}
+							}
+
+							update_sdf_auxiliary_fields();
+							sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+							update_gpu_mesh(mesh, vertices, indices);
+						}
+					}
+					break;
+				}
+				case Brush::sphere: {
+					if (ImGui::IsKeyPressed(ImGuiKey_MouseLeft, false)) {
+						auto hit = raycast_world();
+						if (hit) {
+							REDECLARE_VAL(hit, hit.value());
+							
+							auto hit_position_int = (v3s)floor(hit.position);
+
+							if (force > 0) {
+								for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
+								for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
+								for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+									v3s p = {x,y,z};
+									sdf.sdf[p.x][p.y][p.z] = min(sdf.sdf[p.x][p.y][p.z], map_clamped<f32,f32>(distance((v3f)p, hit.position), brush_radius - 1, brush_radius, -1, 1));
+								}
+								}
+								}
+							} else {
+								for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
+								for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
+								for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+									v3s p = {x,y,z};
+									sdf.sdf[p.x][p.y][p.z] = max(sdf.sdf[p.x][p.y][p.z], map_clamped<f32,f32>(distance((v3f)p, hit.position), brush_radius - 1, brush_radius, 1, -1));
+								}
+								}
+								}
+							}
+
+							update_sdf_auxiliary_fields();
+							sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+							update_gpu_mesh(mesh, vertices, indices);
+						}
+					}
+					break;
+				}
+			}
 		}
 
 		f32 speed = 15;
@@ -1132,8 +1175,6 @@ s32 tl_main(Span<String> args) {
 		glCullFace(GL_BACK);
 
 		glDisable(GL_BLEND);
-
-		m4 world_to_ndc = m4::perspective_right_handed((f32)screen_size.x / screen_size.y, pi/2, 0.01f, 1000.0f) * m4::rotation_r_yxz(camera_angles) * m4::translation(-camera_position);
 		
 		m4 model_to_world = m4::translation({0,0,0}) * m4::rotation_r_zxy({0,0,0});
 		m4 model_to_ndc = world_to_ndc * model_to_world;
@@ -1149,18 +1190,20 @@ s32 tl_main(Span<String> args) {
 		gl::set_uniform(surface_program.program, "camera_position", camera_position);
 		glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
 
-		//glEnable(GL_LINE_SMOOTH);
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		glEnable(GL_POLYGON_OFFSET_LINE);
-		glPolygonOffset(0, -16);
-		glDepthFunc(GL_LEQUAL);
-		glEnable(GL_BLEND);
-		glDisable(GL_CULL_FACE);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glUseProgram(wireframe_program.program);
-		gl::set_uniform(wireframe_program.program, "model_to_world", model_to_world);
-		gl::set_uniform(wireframe_program.program, "model_to_ndc", model_to_ndc);
-		glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
+		if (enable_wireframe) {
+			//glEnable(GL_LINE_SMOOTH);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glEnable(GL_POLYGON_OFFSET_LINE);
+			glPolygonOffset(0, -16);
+			glDepthFunc(GL_LEQUAL);
+			glEnable(GL_BLEND);
+			glDisable(GL_CULL_FACE);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glUseProgram(wireframe_program.program);
+			gl::set_uniform(wireframe_program.program, "model_to_world", model_to_world);
+			gl::set_uniform(wireframe_program.program, "model_to_ndc", model_to_ndc);
+			glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
+		}
 
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
