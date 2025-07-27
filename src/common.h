@@ -26,4 +26,4 @@ struct Vertex {
 
 #define FROM_SDF       0
 #define FROM_TRIANGLES 1
-#define CALCULATE_NORMALS FROM_TRIANGLES
+#define CALCULATE_NORMALS FROM_SDF

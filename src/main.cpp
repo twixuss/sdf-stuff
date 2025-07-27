@@ -491,6 +491,7 @@ s32 tl_main(Span<String> args) {
 
 		static bool enable_wireframe = false;
 		static bool vsync = true;
+		static bool accurate_normals = false;
 
 		if (ImGui::Begin("Window")) {
 			ImGui::Text("%.1f fps", smoothed_fps);
@@ -499,6 +500,7 @@ s32 tl_main(Span<String> args) {
 				wglSwapIntervalEXT(vsync);
 			}
 			ImGui::Checkbox("Wireframe", &enable_wireframe);
+			ImGui::Checkbox("Accurate normals", &accurate_normals);
 			if (ImGui::Button("Remesh Starting")) {
 				update_sdf_auxiliary_fields();
 				sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);
@@ -717,6 +719,7 @@ s32 tl_main(Span<String> args) {
 		gl::set_uniform(surface_program.program, "model_to_ndc", model_to_ndc);
 		gl::set_uniform(surface_program.program, "camera_position", camera_position);
 		bind_texture(surface_program.program, 0, "sdf_texture", sdf_texture, 0, GL_TEXTURE_3D);
+		gl::set_uniform(surface_program.program, "accurate_normals", accurate_normals);
 		glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
 
 		if (enable_wireframe) {

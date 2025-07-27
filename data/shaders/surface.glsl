@@ -8,6 +8,7 @@ uniform mat4 model_to_world;
 uniform mat4 model_to_ndc;
 uniform vec3 camera_position;
 layout(location=0) uniform sampler3D sdf_texture;
+uniform bool accurate_normals;
 
 VS2FS vec3 v_normal;
 VS2FS vec3 v_world_position;
@@ -75,8 +76,10 @@ out vec4 fragColor;
 void main() {
 	vec3 L = normalize(vec3(1,3,2));
 	vec3 N;
-	N = v_normal; // 3400 fps at 40% usage
-	//N = sampleNormal(v_world_position.zyx).zyx; // 2650 fps at 80% usage
+	if (accurate_normals)
+		N = sampleNormal(v_world_position.zyx).zyx; // 2650 fps at 80% usage
+	else 
+		N = v_normal; // 3400 fps at 40% usage
 	N = normalize(N);
 
 	//N = texture(normals_texture, v_world_position.zyx / 128.0).xyz * 2 - 1;
