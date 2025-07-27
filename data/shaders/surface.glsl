@@ -7,10 +7,52 @@
 uniform mat4 model_to_world;
 uniform mat4 model_to_ndc;
 uniform vec3 camera_position;
+layout(location=0) uniform sampler3D sdf_texture;
 
 VS2FS vec3 v_normal;
 VS2FS vec3 v_world_position;
 VS2FS vec3 v_view;
+
+
+vec3 sampleNormal(vec3 fp) {
+	fp -= 0.5;
+	vec3 fpFloor = floor(fp);
+	vec3 t = fp - fpFloor;
+	ivec3 p = ivec3(floor(fp));
+
+	float d[3][3][3];
+
+	for (int x = 0; x < 3; ++x)
+	for (int y = 0; y < 3; ++y)
+	for (int z = 0; z < 3; ++z)
+		d[x][y][z] = texelFetch(sdf_texture, p + ivec3(x,y,z), 0).x;
+
+	vec3 n[2][2][2];
+
+	for (int x = 0; x < 2; ++x)
+	for (int y = 0; y < 2; ++y)
+	for (int z = 0; z < 2; ++z)
+		n[x][y][z] = normalize(vec3(
+			d[x+0][y+0][z+0] - d[x+1][y+0][z+0] +
+			d[x+0][y+0][z+1] - d[x+1][y+0][z+1] +
+			d[x+0][y+1][z+0] - d[x+1][y+1][z+0] +
+			d[x+0][y+1][z+1] - d[x+1][y+1][z+1],
+			d[x+0][y+0][z+0] - d[x+0][y+1][z+0] +
+			d[x+0][y+0][z+1] - d[x+0][y+1][z+1] +
+			d[x+1][y+0][z+0] - d[x+1][y+1][z+0] +
+			d[x+1][y+0][z+1] - d[x+1][y+1][z+1],
+			d[x+0][y+0][z+0] - d[x+0][y+0][z+1] +
+			d[x+0][y+1][z+0] - d[x+0][y+1][z+1] +
+			d[x+1][y+0][z+0] - d[x+1][y+0][z+1] +
+			d[x+1][y+1][z+0] - d[x+1][y+1][z+1]
+		));
+
+	return mix(mix(
+		mix(n[0][0][0], n[0][0][1], t. z),
+		mix(n[0][1][0], n[0][1][1], t. z), t.y), mix(
+		mix(n[1][0][0], n[1][0][1], t. z),
+		mix(n[1][1][0], n[1][1][1], t. z), t.y), t.x);
+}
 
 
 #ifdef VERTEX_SHADER
@@ -32,7 +74,12 @@ void main() {
 out vec4 fragColor;
 void main() {
 	vec3 L = normalize(vec3(1,3,2));
-	vec3 N = v_normal;
+	vec3 N;
+	N = v_normal; // 3400 fps at 40% usage
+	//N = sampleNormal(v_world_position.zyx).zyx; // 2650 fps at 80% usage
+	N = normalize(N);
+
+	//N = texture(normals_texture, v_world_position.zyx / 128.0).xyz * 2 - 1;
 	vec3 V = normalize(v_view);
 	vec3 H = normalize(V + L);
 

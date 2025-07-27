@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="src\main.cpp" />
     <ClCompile Include="dep\imgui\imgui.cpp" />
     <ClCompile Include="dep\imgui\imgui_demo.cpp" />
     <ClCompile Include="dep\imgui\imgui_draw.cpp" />
@@ -9,10 +9,13 @@
     <ClCompile Include="dep\imgui\imgui_widgets.cpp" />
     <ClCompile Include="dep\imgui\backends\imgui_impl_opengl3.cpp" />
     <ClCompile Include="dep\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_starting.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_sse.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="big_int.h" />
     <ClInclude Include="randmesh.h" />
+    <ClInclude Include="src\common.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="hvv.asm" />
