@@ -23,6 +23,9 @@ gl::Functions *tl_opengl_functions() { return &gl_functions; };
 
 void sdf_to_triangles_starting(v3u size, Span<f32> sdf, GList<Vertex> &vertices, GList<u32> &indices, GList<u32> &index_grid);
 void sdf_to_triangles_sse(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, Span<u8> surface_bitfield, GList<Vertex> &vertices, GList<u32> &indices, GList<u32> &index_grid);
+void sdf_to_triangles_avx(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, Span<u8> surface_bitfield, GList<Vertex> &vertices, GList<u32> &indices, GList<u32> &index_grid);
+
+#define sdf_to_triangles sdf_to_triangles_avx
 
 forceinline s16 gradient_noise_s16(v3s coordinate, s32 step) {
 	v3s floored = floor(coordinate, step);
@@ -86,19 +89,59 @@ struct Sdf {
 	u8 surface_bitfield[N*N*N/8];
 } sdf;
 
-void update_sdf_auxiliary_fields() {
-	memset(sdf.negative_bitfield, 0, sizeof(sdf.negative_bitfield));
-	memset(sdf.surface_bitfield, 0, sizeof(sdf.surface_bitfield));
-	for (int x = 0; x < N; ++x) {
-	for (int y = 0; y < N; ++y) {
-	for (int z = 0; z < N; ++z) {
-		sdf.negative_bitfield[(x*N*N + y*N + z)/8] |= (*(u32 *)&sdf.sdf[x][y][z] >> 31) << (z % 8);
+void verify_sdf_aux_bit_fields(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, Span<u8> surface_bitfield) {
+	auto at = [&](auto &arr, u32 x, u32 y, u32 z) -> decltype(auto) {
+		return arr[x * (size.y*size.z) + y * (size.z) + z];
+	};
+
+	for (u32 x = 0; x < size.x; ++x) {
+	for (u32 y = 0; y < size.y; ++y) {
+	for (u32 z = 0; z < size.z; ++z) {
+		assert(((negative_bitfield.data[(x*size.y*size.z + y*size.z + z)/8] >> (z%8)) & 1) == (*(u32 *)&at(sdf.data,x,y,z)>>31));
 	}
 	}
 	}
-	for (int x = 0; x < N-1; ++x) {
-	for (int y = 0; y < N-1; ++y) {
-	for (int z = 0; z < N-1; ++z) {
+	for (u32 x = 0; x < size.x-1; ++x) {
+	for (u32 y = 0; y < size.y-1; ++y) {
+	for (u32 z = 0; z < size.z-1; ++z) {
+		bool n0 = (negative_bitfield.data[((x+0)*size.y*size.z + (y+0)*size.z + (z+0))/8] >> ((z+0)%8)) & 1;
+		bool n1 = (negative_bitfield.data[((x+0)*size.y*size.z + (y+0)*size.z + (z+1))/8] >> ((z+1)%8)) & 1;
+		bool n2 = (negative_bitfield.data[((x+0)*size.y*size.z + (y+1)*size.z + (z+0))/8] >> ((z+0)%8)) & 1;
+		bool n3 = (negative_bitfield.data[((x+0)*size.y*size.z + (y+1)*size.z + (z+1))/8] >> ((z+1)%8)) & 1;
+		bool n4 = (negative_bitfield.data[((x+1)*size.y*size.z + (y+0)*size.z + (z+0))/8] >> ((z+0)%8)) & 1;
+		bool n5 = (negative_bitfield.data[((x+1)*size.y*size.z + (y+0)*size.z + (z+1))/8] >> ((z+1)%8)) & 1;
+		bool n6 = (negative_bitfield.data[((x+1)*size.y*size.z + (y+1)*size.z + (z+0))/8] >> ((z+0)%8)) & 1;
+		bool n7 = (negative_bitfield.data[((x+1)*size.y*size.z + (y+1)*size.z + (z+1))/8] >> ((z+1)%8)) & 1;
+		bool surface = (surface_bitfield[(x*size.y*size.z + y*size.z + z)/8] >> (z%8)) & 1;
+		int sum = n0 + n1 + n2 + n3 + n4 + n5 + n6 + n7;
+		if (surface) {
+			assert(sum > 0 && sum < 8);
+		} else {
+			assert(sum == 0 || sum == 8);
+		}
+	}
+	}
+	}
+}
+
+void update_sdf_auxiliary_fields(aabb<v3s> range = {{}, {N,N,N}}) {
+	timed_block_always("aux update");
+
+	// range = {{}, {N,N,N}};
+
+	for (int x = range.min.x; x < range.max.x; ++x) {
+	for (int y = range.min.y; y < range.max.y; ++y) {
+	for (int z = range.min.z; z < range.max.z; ++z) {
+		u8 &byte = sdf.negative_bitfield[(x*N*N + y*N + z)/8];
+		bool is_negative = *(u32 *)&sdf.sdf[x][y][z] >> 31;
+		byte &= ~(1 << (z % 8));
+		byte |= is_negative << (z % 8);
+	}
+	}
+	}
+	for (int x = max(0,range.min.x-1); x < min(range.max.x, N-1); ++x) {
+	for (int y = max(0,range.min.y-1); y < min(range.max.y, N-1); ++y) {
+	for (int z = max(0,range.min.z-1); z < min(range.max.z, N-1); ++z) {
 
 		u8 r = 
 			(((*(u16*)&sdf.negative_bitfield[((x+0)*N*N + (y+0)*N + z)/8] >> (z%8)) & 0x3) << 0) |
@@ -108,10 +151,14 @@ void update_sdf_auxiliary_fields() {
 		
 		bool surface = (u8)(r + 1) >= 2;
 		
-		sdf.surface_bitfield[(x*N*N + y*N + z)/8] |= surface << (z % 8);
+		u8 &byte = sdf.surface_bitfield[(x*N*N + y*N + z)/8];
+		byte &= ~(1 << (z % 8));
+		byte |= surface << (z % 8);
 	}
 	}
 	}
+
+	//verify_sdf_aux_bit_fields({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield);
 }
 
 void write_sdf_to_file() {
@@ -123,7 +170,7 @@ void write_sdf_to_file() {
 
 		v3f p = V3f(x,y,z) - N/2;
 
-		f32 d = (gradient_noise({x,y,z}, 8) - 0.5f) * 32 - (length(p) - N / 3);
+		f32 d = (gradient_noise({x,y,z}, 8) - 0.5f) * 32 - (length(p) - N / 3); // MAIN
 		//d = clamp(d, -1.0f, 1.0f);
 		//d = roundf(map(d, -1.f, 1.f, -1.f, 254.f));
 
@@ -406,7 +453,7 @@ s32 tl_main(Span<String> args) {
 
 	init_window();
 	
-	sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+	sdf_to_triangles({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
 	GpuMesh mesh = create_gpu_mesh(vertices, indices);
 	GLuint sdf_texture = create_texture(sdf.sdf);
 	
@@ -509,7 +556,7 @@ s32 tl_main(Span<String> args) {
 			}
 			if (ImGui::Button("Remesh SSE")) {
 				update_sdf_auxiliary_fields();
-				sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+				sdf_to_triangles({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
 				update_gpu_mesh(mesh, vertices, indices);
 				update_texture(sdf_texture, sdf.sdf);
 			}
@@ -535,6 +582,7 @@ s32 tl_main(Span<String> args) {
 			}
 			bench.operator()<0>("Starting bench", [&]{sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);});
 			bench.operator()<1>("SSE bench"   , [&]{sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
+			bench.operator()<1>("AVX bench"   , [&]{sdf_to_triangles_avx({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
 			bench.operator()<2>("H bench"     , [&]{bench_h();});
 			bench.operator()<3>("V bench"     , [&]{bench_v();});
 		}
@@ -586,8 +634,6 @@ s32 tl_main(Span<String> args) {
 				cursor_dir,
 			};
 
-			println("dir {}", cursor_ray.direction);
-
 			Optional<RaycastHit<v3f>> hit = {};
 
 			for (umm i = 0; i < indices.count; i += 3) {
@@ -622,17 +668,19 @@ s32 tl_main(Span<String> args) {
 
 							auto hit_position_int = (v3s)floor(hit.position);
 
-							for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
-							for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
-							for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+							aabb<v3s> range = {max(V3s(0),hit_position_int - R), min(hit_position_int + R + 1, V3s(N))};
+
+							for (s32 x = range.min.x; x < range.max.x; ++x) {
+							for (s32 y = range.min.y; y < range.max.y; ++y) {
+							for (s32 z = range.min.z; z < range.max.z; ++z) {
 								v3s p = {x,y,z};
 								sdf.sdf[p.x][p.y][p.z] -= frame_time * force * map_clamped<f32,f32>(distance((v3f)p, hit.position), 0, brush_radius, 1, 0);
 							}
 							}
 							}
 
-							update_sdf_auxiliary_fields();
-							sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+							update_sdf_auxiliary_fields(range);
+							sdf_to_triangles({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
 							update_gpu_mesh(mesh, vertices, indices);
 							update_texture(sdf_texture, sdf.sdf);
 						}
@@ -647,19 +695,21 @@ s32 tl_main(Span<String> args) {
 							
 							auto hit_position_int = (v3s)floor(hit.position);
 
+							aabb<v3s> range = {max(V3s(0),hit_position_int - R), min(hit_position_int + R + 1, V3s(N))};
+
 							if (force > 0) {
-								for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
-								for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
-								for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+								for (s32 x = range.min.x; x < range.max.x; ++x) {
+								for (s32 y = range.min.y; y < range.max.y; ++y) {
+								for (s32 z = range.min.z; z < range.max.z; ++z) {
 									v3s p = {x,y,z};
 									sdf.sdf[p.x][p.y][p.z] = min(sdf.sdf[p.x][p.y][p.z], map_clamped<f32,f32>(distance((v3f)p, hit.position), brush_radius - 1, brush_radius, -1, 1));
 								}
 								}
 								}
 							} else {
-								for (s32 x = max(0,hit_position_int.x-R); x <= min(hit_position_int.x+R,N-1); ++x) {
-								for (s32 y = max(0,hit_position_int.y-R); y <= min(hit_position_int.y+R,N-1); ++y) {
-								for (s32 z = max(0,hit_position_int.z-R); z <= min(hit_position_int.z+R,N-1); ++z) {
+								for (s32 x = range.min.x; x < range.max.x; ++x) {
+								for (s32 y = range.min.y; y < range.max.y; ++y) {
+								for (s32 z = range.min.z; z < range.max.z; ++z) {
 									v3s p = {x,y,z};
 									sdf.sdf[p.x][p.y][p.z] = max(sdf.sdf[p.x][p.y][p.z], map_clamped<f32,f32>(distance((v3f)p, hit.position), brush_radius - 1, brush_radius, 1, -1));
 								}
@@ -667,8 +717,8 @@ s32 tl_main(Span<String> args) {
 								}
 							}
 
-							update_sdf_auxiliary_fields();
-							sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+							update_sdf_auxiliary_fields(range);
+							sdf_to_triangles({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
 							update_gpu_mesh(mesh, vertices, indices);
 							update_texture(sdf_texture, sdf.sdf);
 						}
@@ -745,7 +795,7 @@ s32 tl_main(Span<String> args) {
 		current_time += frame_time;
 
 		//smoothed_fps = lerp(smoothed_fps, 1.0 / frame_time, smoothed_fps_lerp_t);
-		smoothed_fps = lerp(smoothed_fps, 1.0 / frame_time, frame_time * 5);
+		smoothed_fps = lerp(smoothed_fps, 1.0 / frame_time, min(frame_time * 5, 1.0f));
 
 		current_temporary_allocator.clear();
 	}

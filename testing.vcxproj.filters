@@ -11,6 +11,8 @@
     <ClCompile Include="dep\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="src\sdf_to_triangles_starting.cpp" />
     <ClCompile Include="src\sdf_to_triangles_sse.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_s8_sse.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_avx.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="big_int.h" />
@@ -18,6 +20,7 @@
     <ClInclude Include="src\common.h" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="hvv.asm" />
+    <MASM Include="src\hvv.asm" />
+    <MASM Include="src\flush_deferred_sse.asm" />
   </ItemGroup>
 </Project>

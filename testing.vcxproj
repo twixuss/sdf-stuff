@@ -19,6 +19,8 @@
     <ClCompile Include="dep\imgui\imgui_tables.cpp" />
     <ClCompile Include="dep\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_avx.cpp" />
+    <ClCompile Include="src\sdf_to_triangles_s8_sse.cpp" />
     <ClCompile Include="src\sdf_to_triangles_sse.cpp" />
     <ClCompile Include="src\sdf_to_triangles_starting.cpp" />
   </ItemGroup>
@@ -28,7 +30,8 @@
     <ClInclude Include="src\common.h" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="hvv.asm">
+    <MASM Include="src\flush_deferred_sse.asm" />
+    <MASM Include="src\hvv.asm">
       <FileType>Document</FileType>
     </MASM>
   </ItemGroup>
@@ -85,10 +88,12 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile />
     <Link />
+    <ClCompile />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile />
     <Link />
+    <ClCompile />
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
