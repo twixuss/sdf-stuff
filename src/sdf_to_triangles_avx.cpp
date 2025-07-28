@@ -192,59 +192,50 @@ void sdf_to_triangles_avx(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, S
 		__m256 ca = _mm256_xor_ps(s2, s6);
 		__m256 cb = _mm256_xor_ps(s3, s7);
 
-		__m256 t0 = _mm256_div_ps(d0, _mm256_sub_ps(d0, d1));
-		__m256 t1 = _mm256_div_ps(d2, _mm256_sub_ps(d2, d3));
-		__m256 t2 = _mm256_div_ps(d4, _mm256_sub_ps(d4, d5));
-		__m256 t3 = _mm256_div_ps(d6, _mm256_sub_ps(d6, d7));
-		__m256 t4 = _mm256_div_ps(d0, _mm256_sub_ps(d0, d2));
-		__m256 t5 = _mm256_div_ps(d1, _mm256_sub_ps(d1, d3));
-		__m256 t6 = _mm256_div_ps(d4, _mm256_sub_ps(d4, d6));
-		__m256 t7 = _mm256_div_ps(d5, _mm256_sub_ps(d5, d7));
-		__m256 t8 = _mm256_div_ps(d0, _mm256_sub_ps(d0, d4));
-		__m256 t9 = _mm256_div_ps(d1, _mm256_sub_ps(d1, d5));
-		__m256 ta = _mm256_div_ps(d2, _mm256_sub_ps(d2, d6));
-		__m256 tb = _mm256_div_ps(d3, _mm256_sub_ps(d3, d7));
+		__m256 t0 = _mm256_and_ps(_mm256_div_ps(d0, _mm256_sub_ps(d0, d1)), c0);
+		__m256 t1 = _mm256_and_ps(_mm256_div_ps(d2, _mm256_sub_ps(d2, d3)), c1);
+		__m256 t2 = _mm256_and_ps(_mm256_div_ps(d4, _mm256_sub_ps(d4, d5)), c2);
+		__m256 t3 = _mm256_and_ps(_mm256_div_ps(d6, _mm256_sub_ps(d6, d7)), c3);
+		__m256 t4 = _mm256_and_ps(_mm256_div_ps(d0, _mm256_sub_ps(d0, d2)), c4);
+		__m256 t5 = _mm256_and_ps(_mm256_div_ps(d1, _mm256_sub_ps(d1, d3)), c5);
+		__m256 t6 = _mm256_and_ps(_mm256_div_ps(d4, _mm256_sub_ps(d4, d6)), c6);
+		__m256 t7 = _mm256_and_ps(_mm256_div_ps(d5, _mm256_sub_ps(d5, d7)), c7);
+		__m256 t8 = _mm256_and_ps(_mm256_div_ps(d0, _mm256_sub_ps(d0, d4)), c8);
+		__m256 t9 = _mm256_and_ps(_mm256_div_ps(d1, _mm256_sub_ps(d1, d5)), c9);
+		__m256 ta = _mm256_and_ps(_mm256_div_ps(d2, _mm256_sub_ps(d2, d6)), ca);
+		__m256 tb = _mm256_and_ps(_mm256_div_ps(d3, _mm256_sub_ps(d3, d7)), cb);
 
 		__m256 f1111 = _mm256_set1_ps(1);
+		c0 = _mm256_and_ps(c0, f1111);
+		c1 = _mm256_and_ps(c1, f1111);
+		c2 = _mm256_and_ps(c2, f1111);
+		c3 = _mm256_and_ps(c3, f1111);
+		c4 = _mm256_and_ps(c4, f1111);
+		c5 = _mm256_and_ps(c5, f1111);
+		c6 = _mm256_and_ps(c6, f1111);
+		c7 = _mm256_and_ps(c7, f1111);
+		c8 = _mm256_and_ps(c8, f1111);
+		c9 = _mm256_and_ps(c9, f1111);
+		ca = _mm256_and_ps(ca, f1111);
+		cb = _mm256_and_ps(cb, f1111);
 		
-		__m256 _0, _1, _2, _3;
+		__m256 px = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(t8, t9), _mm256_add_ps(ta, tb)), _mm256_add_ps(_mm256_add_ps(c2, c3), _mm256_add_ps(c6, c7)));
+		__m256 py = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(t4, t5), _mm256_add_ps(t6, t7)), _mm256_add_ps(_mm256_add_ps(c1, c3), _mm256_add_ps(ca, cb)));
+		__m256 pz = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(t0, t1), _mm256_add_ps(t2, t3)), _mm256_add_ps(_mm256_add_ps(c5, c9), _mm256_add_ps(c7, cb)));
+		
+		__m256 c = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(_mm256_add_ps(c0, c1),
+		                                                     _mm256_add_ps(c2, c3)),
+		                                       _mm256_add_ps(_mm256_add_ps(c4, c5),
+		                                                     _mm256_add_ps(c6, c7))),
+			                                   _mm256_add_ps(_mm256_add_ps(c8, c9),
+		                                                     _mm256_add_ps(ca, cb)));
 
-		_0 = _mm256_and_ps(c8, t8);
-		_1 = _mm256_and_ps(c9, t9);
-		_2 = _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(c2, f1111), _mm256_and_ps(c6, f1111)), _mm256_and_ps(ca, ta));
-		_3 = _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(c3, f1111), _mm256_and_ps(c7, f1111)), _mm256_and_ps(cb, tb));
-		__m256 px = _mm256_add_ps(_mm256_add_ps(_0, _1), _mm256_add_ps(_2, _3));
-		
-		_0 = _mm256_and_ps(c4, t4);
-		_1 = _mm256_add_ps(_mm256_and_ps(c1, f1111), _mm256_and_ps(c5, t5));
-		_2 = _mm256_add_ps(_mm256_and_ps(c6, t6), _mm256_and_ps(ca, f1111));
-		_3 = _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(c3, f1111), _mm256_and_ps(c7, t7)), _mm256_and_ps(cb, f1111));
-		__m256 py = _mm256_add_ps(_mm256_add_ps(_0, _1), _mm256_add_ps(_2, _3));
-		
-		_0 = _mm256_and_ps(c0, t0);
-		_1 = _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(c1, t1), _mm256_and_ps(c5, f1111)), _mm256_and_ps(c9, f1111));
-		_2 = _mm256_and_ps(c2, t2);
-		_3 = _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(c3, t3), _mm256_and_ps(c7, f1111)), _mm256_and_ps(cb, f1111));
-		__m256 pz = _mm256_add_ps(_mm256_add_ps(_0, _1), _mm256_add_ps(_2, _3));
-		
-		__m256 c = _mm256_add_ps(_mm256_add_ps(_mm256_add_ps(_mm256_add_ps(_mm256_and_ps(f1111, c0),
-		                                                                   _mm256_and_ps(f1111, c1)),
-		                                                     _mm256_add_ps(_mm256_and_ps(f1111, c2),
-		                                                                   _mm256_and_ps(f1111, c3))),
-		                                       _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(f1111, c4),
-		                                                                   _mm256_and_ps(f1111, c5)),
-		                                                     _mm256_add_ps(_mm256_and_ps(f1111, c6),
-		                                                                   _mm256_and_ps(f1111, c7)))),
-			                                   _mm256_add_ps(_mm256_add_ps(_mm256_and_ps(f1111, c8),
-		                                                                   _mm256_and_ps(f1111, c9)),
-		                                                     _mm256_add_ps(_mm256_and_ps(f1111, ca),
-		                                                                   _mm256_and_ps(f1111, cb))));
-		
 		px = _mm256_add_ps(_mm256_div_ps(px, c), deferred.lx);
 		py = _mm256_add_ps(_mm256_div_ps(py, c), deferred.ly);
 		pz = _mm256_add_ps(_mm256_div_ps(pz, c), deferred.lz);
 
 		#if 0
+		// AVX512
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].position.x, _mm256_setr_epi32(0,6,12,18,24,30,36,42), px, 4);
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].position.y, _mm256_setr_epi32(0,6,12,18,24,30,36,42), py, 4);
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].position.z, _mm256_setr_epi32(0,6,12,18,24,30,36,42), pz, 4);
@@ -286,8 +277,13 @@ void sdf_to_triangles_avx(v3u size, Span<f32> sdf, Span<u8> negative_bitfield, S
 		__m256 nx = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(d0, d4), _mm256_sub_ps(d1, d5)), _mm256_add_ps(_mm256_sub_ps(d2, d6), _mm256_sub_ps(d3, d7)));
 		__m256 ny = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(d0, d2), _mm256_sub_ps(d1, d3)), _mm256_add_ps(_mm256_sub_ps(d4, d6), _mm256_sub_ps(d5, d7)));
 		__m256 nz = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(d0, d1), _mm256_sub_ps(d2, d3)), _mm256_add_ps(_mm256_sub_ps(d4, d5), _mm256_sub_ps(d6, d7)));
+		__m256 il = _mm256_rsqrt_ps(_mm256_add_ps(_mm256_add_ps(_mm256_mul_ps(nx,nx), _mm256_mul_ps(ny,ny)), _mm256_mul_ps(nz,nz)));
+		nx = _mm256_mul_ps(nx, il);
+		ny = _mm256_mul_ps(ny, il);
+		nz = _mm256_mul_ps(nz, il);
 		
 		#if 0
+		// AVX512
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].normal.x, _mm256_setr_epi32(0,6,12,18,24,30,36,42), nx, 4);
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].normal.y, _mm256_setr_epi32(0,6,12,18,24,30,36,42), ny, 4);
 		_mm256_i32scatter_ps(&vertices.data[vertices.count].normal.z, _mm256_setr_epi32(0,6,12,18,24,30,36,42), nz, 4);

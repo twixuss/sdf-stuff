@@ -468,8 +468,9 @@ s32 tl_main(Span<String> args) {
 
 	Program surface_program = {.path = to_list(resource_path(u8"shaders/surface.glsl"s))};
 	Program wireframe_program = {.path = to_list(resource_path(u8"shaders/wireframe.glsl"s))};
+	Program normal_program = {.path = to_list(resource_path(u8"shaders/normal.glsl"s))};
 	
-	Program *all_programs[] = { &surface_program, &wireframe_program };
+	Program *all_programs[] = { &surface_program, &wireframe_program, &normal_program };
 
 	for (auto program : all_programs) {
 		program->reload();
@@ -536,7 +537,8 @@ s32 tl_main(Span<String> args) {
 			ImGui::Text("%s", tformat("avg: {}ms ({}/s) | best: {}ms ({}/s)\0"s, time * 1000, format_bytes(sizeof(sdf) / time), time_min * 1000, format_bytes(sizeof(sdf) / time_min)).data);
 		};
 
-		static bool enable_wireframe = false;
+		static bool show_wireframe = false;
+		static float normals_size = 0;
 		static bool vsync = true;
 		static bool accurate_normals = false;
 
@@ -546,17 +548,28 @@ s32 tl_main(Span<String> args) {
 			if (ImGui::Checkbox("VSync", &vsync)) {
 				wglSwapIntervalEXT(vsync);
 			}
-			ImGui::Checkbox("Wireframe", &enable_wireframe);
+			ImGui::Checkbox("Wireframe", &show_wireframe);
+			ImGui::SliderFloat("Normal vectors size", &normals_size, 0, 1);
 			ImGui::Checkbox("Accurate normals", &accurate_normals);
-			if (ImGui::Button("Remesh Starting")) {
+			ImGui::TextUnformatted("Remesh");
+			ImGui::SameLine();
+			if (ImGui::Button("Starting##1")) {
 				update_sdf_auxiliary_fields();
 				sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);
 				update_gpu_mesh(mesh, vertices, indices);
 				update_texture(sdf_texture, sdf.sdf);
 			}
-			if (ImGui::Button("Remesh SSE")) {
+			ImGui::SameLine();
+			if (ImGui::Button("SSE##1")) {
 				update_sdf_auxiliary_fields();
-				sdf_to_triangles({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+				sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
+				update_gpu_mesh(mesh, vertices, indices);
+				update_texture(sdf_texture, sdf.sdf);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("AVX##1")) {
+				update_sdf_auxiliary_fields();
+				sdf_to_triangles_avx({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);
 				update_gpu_mesh(mesh, vertices, indices);
 				update_texture(sdf_texture, sdf.sdf);
 			}
@@ -580,11 +593,13 @@ s32 tl_main(Span<String> args) {
 				}
 				update_gpu_mesh(mesh, vertices, indices);
 			}
-			bench.operator()<0>("Starting bench", [&]{sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);});
-			bench.operator()<1>("SSE bench"   , [&]{sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
-			bench.operator()<1>("AVX bench"   , [&]{sdf_to_triangles_avx({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
-			bench.operator()<2>("H bench"     , [&]{bench_h();});
-			bench.operator()<3>("V bench"     , [&]{bench_v();});
+
+			ImGui::TextUnformatted("Benchmarks");
+			bench.operator()<0>("Starting", [&]{sdf_to_triangles_starting({N,N,N}, flatten(sdf.sdf), vertices, indices, index_grid);});
+			bench.operator()<1>("SSE"     , [&]{sdf_to_triangles_sse({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
+			bench.operator()<1>("AVX"     , [&]{sdf_to_triangles_avx({N,N,N}, flatten(sdf.sdf), sdf.negative_bitfield, sdf.surface_bitfield, vertices, indices, index_grid);});
+			bench.operator()<2>("Horizontal", [&]{bench_h();});
+			bench.operator()<3>("Vertical"  , [&]{bench_v();});
 		}
 		ImGui::End();
 		
@@ -772,7 +787,7 @@ s32 tl_main(Span<String> args) {
 		gl::set_uniform(surface_program.program, "accurate_normals", accurate_normals);
 		glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
 
-		if (enable_wireframe) {
+		if (show_wireframe) {
 			//glEnable(GL_LINE_SMOOTH);
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 			glEnable(GL_POLYGON_OFFSET_LINE);
@@ -785,6 +800,24 @@ s32 tl_main(Span<String> args) {
 			gl::set_uniform(wireframe_program.program, "model_to_world", model_to_world);
 			gl::set_uniform(wireframe_program.program, "model_to_ndc", model_to_ndc);
 			glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, 0);
+		}
+
+		if (normals_size) {
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glEnable(GL_POLYGON_OFFSET_LINE);
+			glPolygonOffset(0, -16);
+			glDepthFunc(GL_LEQUAL);
+			glEnable(GL_BLEND);
+			glDisable(GL_CULL_FACE);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glUseProgram(normal_program.program);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, mesh.vb);
+			gl::set_uniform(normal_program.program, "model_to_world", model_to_world);
+			gl::set_uniform(normal_program.program, "model_to_ndc", model_to_ndc);
+			gl::set_uniform(normal_program.program, "normals_size", normals_size);
+			gl::set_uniform(normal_program.program, "accurate_normals", accurate_normals);
+			bind_texture(normal_program.program, 0, "sdf_texture", sdf_texture, 0, GL_TEXTURE_3D);
+			glDrawArrays(GL_LINES, 0, mesh.vertex_count * 2);
 		}
 
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
