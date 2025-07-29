@@ -10,7 +10,7 @@ uniform float normals_size;
 layout(location=0) uniform sampler3D sdf_texture;
 uniform bool accurate_normals;
 
-VS2FS vec3 v_normal;
+VS2FS vec3 v_color;
 
 
 vec3 sampleNormal(vec3 fp) {
@@ -83,6 +83,7 @@ void main() {
 	vec3 position = v.position;
 	
 	vec3 v_world_position = (model_to_world * vec4(position, 1)).xyz;
+	vec3 v_normal;
 
 	if (accurate_normals) {
 		v_normal = sampleNormal(v_world_position.zyx).zyx;
@@ -90,7 +91,7 @@ void main() {
 		v_normal = v.normal;
 	}
 
-	v_normal = v_normal * 0.5 + 0.5;
+	v_color = v_normal * 0.5 + 0.5;
 
 	if (bool(gl_VertexID & 1)) {
 		position += v_normal * normals_size;
@@ -105,7 +106,7 @@ void main() {
 
 out vec4 fragColor;
 void main() {
-    fragColor = vec4(v_normal,1);
+    fragColor = vec4(v_color,1);
 }
 
 #endif
